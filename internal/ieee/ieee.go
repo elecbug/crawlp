@@ -13,7 +13,7 @@ import (
 
 const ieeeBaseURL = "https://ieeexplore.ieee.org"
 
-func ResolveIEEEDocument(
+func resolveIEEEDocument(
 	cli *http.Client,
 	doi string,
 ) (paper.DocumentInfo, error) {
@@ -108,7 +108,7 @@ func ResolveIEEEDocument(
 	}, nil
 }
 
-func DownloadIEEEPDF(
+func downloadIEEEPDF(
 	cli *http.Client,
 	info paper.DocumentInfo,
 	outputDir string,
