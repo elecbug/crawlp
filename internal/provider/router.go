@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -29,6 +30,8 @@ func (r *Router) Resolve(
 		}
 	}
 
+	var probeErrors []error
+
 	for _, downloader := range r.downloaders {
 		prober, ok := downloader.(Prober)
 		if !ok {
@@ -37,11 +40,16 @@ func (r *Router) Resolve(
 
 		matched, err := prober.Probe(cli, doi)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to probe %s: %w",
-				downloader.Name(),
-				err,
+			probeErrors = append(
+				probeErrors,
+				fmt.Errorf(
+					"%s probe failed: %w",
+					downloader.Name(),
+					err,
+				),
 			)
+
+			continue
 		}
 
 		if matched {
@@ -49,9 +57,20 @@ func (r *Router) Resolve(
 		}
 	}
 
-	return nil, fmt.Errorf(
+	baseErr := fmt.Errorf(
 		"no downloader is registered for DOI: %s",
 		doi,
+	)
+
+	if len(probeErrors) == 0 {
+		return nil, baseErr
+	}
+
+	return nil, errors.Join(
+		append(
+			[]error{baseErr},
+			probeErrors...,
+		)...,
 	)
 }
 

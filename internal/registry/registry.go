@@ -3,6 +3,7 @@ package registry
 import (
 	"github.com/elecbug/crawlp/internal/paper/aaai"
 	"github.com/elecbug/crawlp/internal/paper/acm"
+	"github.com/elecbug/crawlp/internal/paper/elsevier"
 	"github.com/elecbug/crawlp/internal/paper/ieee"
 	"github.com/elecbug/crawlp/internal/paper/springer"
 	"github.com/elecbug/crawlp/internal/provider"
@@ -14,5 +15,6 @@ func NewDefaultRouter() *provider.Router {
 		acm.NewDownloader(),
 		aaai.NewDownloader(),
 		springer.NewDownloader(),
+		elsevier.NewDownloader(),
 	)
 }

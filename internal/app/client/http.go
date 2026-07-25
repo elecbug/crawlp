@@ -68,7 +68,7 @@ func DoGET(
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("HTTP request failed: %s", resp.Status)
+		return nil, fmt.Errorf("HTTP request failed: %+v", resp)
 	}
 
 	return resp, nil
