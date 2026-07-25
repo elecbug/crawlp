@@ -6,8 +6,9 @@ import (
 )
 
 type DocumentInfo struct {
+	DOI         string
+	Identifier  string
 	LandingURL  string
-	ArticleNo   string
 	Title       string
 	MetadataPDF string
 }

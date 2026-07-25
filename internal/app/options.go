@@ -9,8 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/elecbug/crawlp/internal/flag"
 )
 
 type Options struct {
@@ -21,7 +19,7 @@ type Options struct {
 	PauseOnFinish bool
 }
 
-func ParseOptions(flags *flag.Flags) (Options, error) {
+func ParseOptions(flags *Flags) (Options, error) {
 	var opts Options
 
 	opts.OutputDir = flags.OutputDir

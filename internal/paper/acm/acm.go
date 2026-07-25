@@ -1,4 +1,4 @@
-package ieee
+package acm
 
 import (
 	"errors"
@@ -11,62 +11,27 @@ import (
 	"github.com/elecbug/crawlp/internal/paper"
 )
 
-const ieeeBaseURL = "https://ieeexplore.ieee.org"
+const acmBaseURL = "https://dl.acm.org"
 
-func resolveIEEEDocument(
+func resolveACMDocument(
 	cli *http.Client,
 	doi string,
 ) (paper.DocumentInfo, error) {
-	resolverURL := paper.DoiResolver + paper.EscapeDOIPath(doi)
-
-	resolverResp, err := client.DoGET(
-		cli,
-		resolverURL,
-		"text/html,application/xhtml+xml",
-		"",
-	)
-	if err != nil {
-		return paper.DocumentInfo{}, fmt.Errorf("failed to resolve DOI: %w", err)
-	}
-
-	resolverBody, err := client.ReadAndClose(resolverResp, 32<<20)
-	if err != nil {
-		return paper.DocumentInfo{}, fmt.Errorf("failed to read DOI response: %w", err)
-	}
-
-	finalURL := resolverResp.Request.URL.String()
-	finalHost := strings.ToLower(resolverResp.Request.URL.Hostname())
-
-	if !strings.Contains(finalHost, "ieeexplore.ieee.org") {
-		return paper.DocumentInfo{}, fmt.Errorf(
-			"DOI did not resolve to IEEE Xplore: %s",
-			finalURL,
-		)
-	}
-
-	articleNo, err := paper.ExtractArticleNumber(
-		finalURL,
-		string(resolverBody),
-	)
-	if err != nil {
-		return paper.DocumentInfo{}, err
-	}
-
 	canonicalURL := fmt.Sprintf(
-		"%s/document/%s",
-		ieeeBaseURL,
-		articleNo,
+		"%s/doi/%s",
+		acmBaseURL,
+		paper.EscapeDOIPath(doi),
 	)
 
 	landingResp, err := client.DoGET(
 		cli,
 		canonicalURL,
 		"text/html,application/xhtml+xml",
-		finalURL,
+		"",
 	)
 	if err != nil {
 		return paper.DocumentInfo{}, fmt.Errorf(
-			"failed to request IEEE Xplore landing page: %w",
+			"failed to request ACM Digital Library landing page: %w",
 			err,
 		)
 	}
@@ -74,62 +39,86 @@ func resolveIEEEDocument(
 	landingBody, err := client.ReadAndClose(landingResp, 32<<20)
 	if err != nil {
 		return paper.DocumentInfo{}, fmt.Errorf(
-			"failed to read IEEE Xplore landing page: %w",
+			"failed to read ACM Digital Library landing page: %w",
 			err,
 		)
 	}
 
+	finalURL := landingResp.Request.URL.String()
+	finalHost := strings.ToLower(
+		strings.TrimSuffix(
+			landingResp.Request.URL.Hostname(),
+			".",
+		),
+	)
+
+	if finalHost != "dl.acm.org" {
+		return paper.DocumentInfo{}, fmt.Errorf(
+			"ACM DOI did not resolve to the ACM Digital Library: %s",
+			finalURL,
+		)
+	}
+
 	landingHTML := string(landingBody)
-	resolverHTML := string(resolverBody)
 
 	title := firstNonEmpty(
-		client.ExtractMetaContent(landingHTML, "citation_title"),
-		client.ExtractMetaContent(resolverHTML, "citation_title"),
-		"IEEE-"+articleNo,
+		client.ExtractMetaContent(
+			landingHTML,
+			"citation_title",
+		),
+		client.ExtractMetaContent(
+			landingHTML,
+			"dc.Title",
+		),
+		fallbackTitle(doi),
 	)
 
 	metadataPDF := firstNonEmpty(
-		client.ExtractMetaContent(landingHTML, "citation_pdf_url"),
-		client.ExtractMetaContent(resolverHTML, "citation_pdf_url"),
+		client.ExtractMetaContent(
+			landingHTML,
+			"citation_pdf_url",
+		),
 	)
 
 	if metadataPDF != "" {
-		metadataPDF, err = client.AbsoluteURL(ieeeBaseURL, metadataPDF)
+		metadataPDF, err = client.AbsoluteURL(
+			acmBaseURL,
+			metadataPDF,
+		)
 		if err != nil {
 			metadataPDF = ""
 		}
 	}
 
 	return paper.DocumentInfo{
-		LandingURL:  landingResp.Request.URL.String(),
-		ArticleNo:   articleNo,
+		DOI:         doi,
+		Identifier:  doi,
+		LandingURL:  finalURL,
 		Title:       title,
 		MetadataPDF: metadataPDF,
 	}, nil
 }
 
-func downloadIEEEPDF(
+func downloadACMPDF(
 	cli *http.Client,
 	info paper.DocumentInfo,
 	outputDir string,
 ) (string, error) {
-	candidates := make([]string, 0, 3)
+	candidates := make([]string, 0, 2)
 
 	if info.MetadataPDF != "" {
-		candidates = append(candidates, info.MetadataPDF)
+		candidates = append(
+			candidates,
+			info.MetadataPDF,
+		)
 	}
 
 	candidates = append(
 		candidates,
 		fmt.Sprintf(
-			"%s/stampPDF/getPDF.jsp?tp=&arnumber=%s&ref=",
-			ieeeBaseURL,
-			info.ArticleNo,
-		),
-		fmt.Sprintf(
-			"%s/stampPDF/getPDF.jsp?arnumber=%s",
-			ieeeBaseURL,
-			info.ArticleNo,
+			"%s/doi/pdf/%s",
+			acmBaseURL,
+			paper.EscapeDOIPath(info.DOI),
 		),
 	)
 
@@ -146,7 +135,7 @@ func downloadIEEEPDF(
 
 	for index, pdfURL := range candidates {
 		fmt.Printf(
-			"Trying PDF endpoint %d of %d...\n",
+			"Trying ACM PDF endpoint %d of %d...\n",
 			index+1,
 			len(candidates),
 		)
@@ -159,11 +148,16 @@ func downloadIEEEPDF(
 		)
 		if err != nil {
 			lastErr = err
-			fmt.Fprintf(os.Stderr, "Attempt failed: %v\n", err)
+			fmt.Fprintf(
+				os.Stderr,
+				"Attempt failed: %v\n",
+				err,
+			)
 			continue
 		}
 
 		filename := client.ContentDispositionFilename(resp)
+
 		if filename == "" {
 			filename = client.SafeFilename(info.Title) + ".pdf"
 		} else if !strings.HasSuffix(
@@ -177,16 +171,24 @@ func downloadIEEEPDF(
 			outputDir,
 			filename,
 			info.Title,
-			info.ArticleNo,
+			info.Identifier,
 		)
 
-		err = paper.SaveVerifiedPDF(resp, outputPath)
+		err = paper.SaveVerifiedPDF(
+			resp,
+			outputPath,
+		)
 		if err == nil {
 			return outputPath, nil
 		}
 
 		lastErr = err
-		fmt.Fprintf(os.Stderr, "Attempt failed: %v\n", err)
+
+		fmt.Fprintf(
+			os.Stderr,
+			"Attempt failed: %v\n",
+			err,
+		)
 	}
 
 	if lastErr == nil {
@@ -194,9 +196,22 @@ func downloadIEEEPDF(
 	}
 
 	return "", fmt.Errorf(
-		"all PDF download endpoints failed: %w",
+		"all ACM PDF download endpoints failed: %w",
 		lastErr,
 	)
+}
+
+func fallbackTitle(doi string) string {
+	suffix := strings.TrimPrefix(
+		strings.ToLower(strings.TrimSpace(doi)),
+		"10.1145/",
+	)
+
+	if suffix == "" {
+		suffix = doi
+	}
+
+	return "ACM-" + client.SafeFilename(suffix)
 }
 
 func firstNonEmpty(values ...string) string {
@@ -210,8 +225,16 @@ func firstNonEmpty(values ...string) string {
 }
 
 func uniqueStrings(values []string) []string {
-	seen := make(map[string]struct{}, len(values))
-	result := make([]string, 0, len(values))
+	seen := make(
+		map[string]struct{},
+		len(values),
+	)
+
+	result := make(
+		[]string,
+		0,
+		len(values),
+	)
 
 	for _, value := range values {
 		if value == "" {

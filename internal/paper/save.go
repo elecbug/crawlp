@@ -15,32 +15,54 @@ func UniqueOutputPath(
 	outputDir string,
 	filename string,
 	title string,
-	articleNo string,
+	identifier string,
 ) string {
-	outputPath := filepath.Join(outputDir, filename)
+	outputPath := filepath.Join(
+		outputDir,
+		filename,
+	)
 
-	if _, err := os.Stat(outputPath); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(outputPath); errors.Is(
+		err,
+		os.ErrNotExist,
+	) {
 		return outputPath
 	}
+
+	safeIdentifier := client.SafeFilename(identifier)
 
 	base := fmt.Sprintf(
 		"%s-%s",
 		client.SafeFilename(title),
-		articleNo,
+		safeIdentifier,
 	)
 
-	candidate := filepath.Join(outputDir, base+".pdf")
-	if _, err := os.Stat(candidate); errors.Is(err, os.ErrNotExist) {
+	candidate := filepath.Join(
+		outputDir,
+		base+".pdf",
+	)
+
+	if _, err := os.Stat(candidate); errors.Is(
+		err,
+		os.ErrNotExist,
+	) {
 		return candidate
 	}
 
 	for index := 2; ; index++ {
 		candidate = filepath.Join(
 			outputDir,
-			fmt.Sprintf("%s-%d.pdf", base, index),
+			fmt.Sprintf(
+				"%s-%d.pdf",
+				base,
+				index,
+			),
 		)
 
-		if _, err := os.Stat(candidate); errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(candidate); errors.Is(
+			err,
+			os.ErrNotExist,
+		) {
 			return candidate
 		}
 	}

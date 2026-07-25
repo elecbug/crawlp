@@ -1,4 +1,4 @@
-package ieee
+package acm
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"github.com/elecbug/crawlp/internal/provider"
 )
 
-const doiPrefix = "10.1109/"
+const acmDOIPrefix = "10.1145/"
 
 type Downloader struct{}
 
@@ -17,35 +17,45 @@ func NewDownloader() *Downloader {
 }
 
 func (d *Downloader) ID() string {
-	return "ieee"
+	return "acm"
 }
 
 func (d *Downloader) Name() string {
-	return "IEEE Xplore"
+	return "ACM Digital Library"
 }
 
 func (d *Downloader) MatchDOI(doi string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(doi))
-	return strings.HasPrefix(normalized, doiPrefix)
+	normalized := strings.ToLower(
+		strings.TrimSpace(doi),
+	)
+
+	return strings.HasPrefix(
+		normalized,
+		acmDOIPrefix,
+	)
 }
 
 func (d *Downloader) Download(
-	client *http.Client,
+	cli *http.Client,
 	doi string,
 	outputDir string,
 ) (provider.Result, error) {
-	info, err := resolveIEEEDocument(client, doi)
+	info, err := resolveACMDocument(cli, doi)
 	if err != nil {
 		return provider.Result{}, fmt.Errorf(
-			"failed to resolve IEEE Xplore document: %w",
+			"failed to resolve ACM document: %w",
 			err,
 		)
 	}
 
-	outputPath, err := downloadIEEEPDF(client, info, outputDir)
+	outputPath, err := downloadACMPDF(
+		cli,
+		info,
+		outputDir,
+	)
 	if err != nil {
 		return provider.Result{}, fmt.Errorf(
-			"failed to download IEEE Xplore document: %w",
+			"failed to download ACM document: %w",
 			err,
 		)
 	}
@@ -54,7 +64,7 @@ func (d *Downloader) Download(
 		ProviderID:   d.ID(),
 		ProviderName: d.Name(),
 		Title:        info.Title,
-		Identifier:   info.ArticleNo,
+		Identifier:   info.Identifier,
 		LandingURL:   info.LandingURL,
 		OutputPath:   outputPath,
 	}, nil

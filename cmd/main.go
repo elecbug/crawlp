@@ -4,11 +4,10 @@ import (
 	"os"
 
 	"github.com/elecbug/crawlp/internal/app"
-	"github.com/elecbug/crawlp/internal/flag"
 )
 
 func main() {
-	flags := flag.ParseFlags()
+	flags := app.ParseFlags()
 	opts, err := app.ParseOptions(flags)
 	if err != nil {
 		app.PrintError(err)
