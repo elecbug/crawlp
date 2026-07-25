@@ -15,6 +15,7 @@ type Options struct {
 	DOI           string
 	OutputDir     string
 	Timeout       time.Duration
+	AutoProvider  bool
 	Interactive   bool
 	PauseOnFinish bool
 }
@@ -24,6 +25,7 @@ func ParseOptions(flags *Flags) (Options, error) {
 
 	opts.OutputDir = flags.OutputDir
 	opts.Timeout = time.Duration(flags.TimeoutSeconds) * time.Second
+	opts.AutoProvider = flags.AutoProvider
 
 	if flags.TimeoutSeconds <= 0 {
 		return opts, errors.New("timeout must be greater than zero")

@@ -24,19 +24,33 @@ func Run(opts Options) error {
 
 	httpClient, err := httpclient.NewHTTPClient(opts.Timeout)
 	if err != nil {
-		return fmt.Errorf("failed to create HTTP client: %w", err)
+		return fmt.Errorf(
+			"failed to create HTTP client: %w",
+			err,
+		)
 	}
 
 	fmt.Printf("Resolving DOI: %s\n", doi)
 
 	router := registry.NewDefaultRouter()
 
-	downloader, err := router.Resolve(httpClient, doi)
+	detected, detectionErr := router.Resolve(
+		httpClient,
+		doi,
+	)
+
+	downloader, err := selectDownloaderInteractively(
+		router,
+		detected,
+		detectionErr,
+		opts.AutoProvider,
+	)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Identified provider: %s\n", downloader.Name())
+	fmt.Println()
+	fmt.Printf("Selected provider: %s\n", downloader.Name())
 	fmt.Printf(
 		"Forwarding request to the %s downloader.\n",
 		downloader.Name(),
@@ -48,7 +62,11 @@ func Run(opts Options) error {
 		opts.OutputDir,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf(
+			"%s downloader failed: %w",
+			downloader.Name(),
+			err,
+		)
 	}
 
 	outputPath := result.OutputPath
@@ -61,11 +79,17 @@ func Run(opts Options) error {
 	fmt.Printf("Title: %s\n", result.Title)
 
 	if result.Identifier != "" {
-		fmt.Printf("Provider identifier: %s\n", result.Identifier)
+		fmt.Printf(
+			"Provider identifier: %s\n",
+			result.Identifier,
+		)
 	}
 
 	if result.LandingURL != "" {
-		fmt.Printf("Landing page: %s\n", result.LandingURL)
+		fmt.Printf(
+			"Landing page: %s\n",
+			result.LandingURL,
+		)
 	}
 
 	fmt.Println()

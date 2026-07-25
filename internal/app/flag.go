@@ -13,12 +13,14 @@ type Flags struct {
 	MainArgs       []string
 	OutputDir      string
 	TimeoutSeconds int
+	AutoProvider   bool
 	NArg           int
 }
 
 func ParseFlags() *Flags {
 	outputDirF := flag.String("o", config.DEFAULT_OUTPUT_DIR, "Output directory for downloaded PDF files")
 	timeoutSecondsF := flag.Int("timeout", config.DEFAULT_TIMEOUT, "HTTP timeout in seconds")
+	providerF := flag.Bool("auto-provider", false, "")
 	flag.Usage = printUsage
 	flag.Parse()
 
@@ -26,6 +28,7 @@ func ParseFlags() *Flags {
 		MainArgs:       flag.Args(),
 		OutputDir:      *outputDirF,
 		TimeoutSeconds: *timeoutSecondsF,
+		AutoProvider:   *providerF,
 		NArg:           flag.NArg(),
 	}
 }
