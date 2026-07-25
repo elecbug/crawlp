@@ -31,7 +31,7 @@ func Run(opts Options) error {
 
 	router := registry.NewDefaultRouter()
 
-	downloader, err := router.Resolve(doi)
+	downloader, err := router.Resolve(httpClient, doi)
 	if err != nil {
 		return err
 	}
