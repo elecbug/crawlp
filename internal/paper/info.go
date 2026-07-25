@@ -6,11 +6,12 @@ import (
 )
 
 type DocumentInfo struct {
-	DOI         string
-	Identifier  string
-	LandingURL  string
-	Title       string
-	MetadataPDF string
+	DOI          string
+	Identifier   string
+	LandingURL   string
+	Title        string
+	MetadataPDF  string
+	DocumentType string
 }
 
 var articlePatterns = []*regexp.Regexp{
