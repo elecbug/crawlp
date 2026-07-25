@@ -1,6 +1,7 @@
 package acm
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,89 +12,110 @@ import (
 	"github.com/elecbug/crawlp/internal/paper"
 )
 
-const acmBaseURL = "https://dl.acm.org"
+const (
+	acmBaseURL      = "https://dl.acm.org"
+	crossrefBaseURL = "https://api.crossref.org/v1"
+)
+
+type crossrefResponse struct {
+	Status  string       `json:"status"`
+	Message crossrefWork `json:"message"`
+}
+
+type crossrefWork struct {
+	DOI       string         `json:"DOI"`
+	Title     []string       `json:"title"`
+	URL       string         `json:"URL"`
+	Publisher string         `json:"publisher"`
+	Link      []crossrefLink `json:"link"`
+}
+
+type crossrefLink struct {
+	URL                 string `json:"URL"`
+	ContentType         string `json:"content-type"`
+	ContentVersion      string `json:"content-version"`
+	IntendedApplication string `json:"intended-application"`
+}
 
 func resolveACMDocument(
 	cli *http.Client,
 	doi string,
 ) (paper.DocumentInfo, error) {
-	canonicalURL := fmt.Sprintf(
-		"%s/doi/%s",
-		acmBaseURL,
+	crossrefURL := fmt.Sprintf(
+		"%s/works/%s",
+		crossrefBaseURL,
 		paper.EscapeDOIPath(doi),
 	)
 
-	landingResp, err := client.DoGET(
+	resp, err := client.DoGET(
 		cli,
-		canonicalURL,
-		"text/html,application/xhtml+xml",
+		crossrefURL,
+		"application/json",
 		"",
 	)
 	if err != nil {
 		return paper.DocumentInfo{}, fmt.Errorf(
-			"failed to request ACM Digital Library landing page: %w",
+			"failed to request Crossref metadata: %w",
 			err,
 		)
 	}
 
-	landingBody, err := client.ReadAndClose(landingResp, 32<<20)
+	body, err := client.ReadAndClose(resp, 8<<20)
 	if err != nil {
 		return paper.DocumentInfo{}, fmt.Errorf(
-			"failed to read ACM Digital Library landing page: %w",
+			"failed to read Crossref metadata response: %w",
 			err,
 		)
 	}
 
-	finalURL := landingResp.Request.URL.String()
-	finalHost := strings.ToLower(
-		strings.TrimSuffix(
-			landingResp.Request.URL.Hostname(),
-			".",
-		),
-	)
+	var result crossrefResponse
 
-	if finalHost != "dl.acm.org" {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return paper.DocumentInfo{}, fmt.Errorf(
-			"ACM DOI did not resolve to the ACM Digital Library: %s",
-			finalURL,
+			"failed to decode Crossref metadata: %w",
+			err,
 		)
 	}
 
-	landingHTML := string(landingBody)
-
-	title := firstNonEmpty(
-		client.ExtractMetaContent(
-			landingHTML,
-			"citation_title",
-		),
-		client.ExtractMetaContent(
-			landingHTML,
-			"dc.Title",
-		),
-		fallbackTitle(doi),
-	)
-
-	metadataPDF := firstNonEmpty(
-		client.ExtractMetaContent(
-			landingHTML,
-			"citation_pdf_url",
-		),
-	)
-
-	if metadataPDF != "" {
-		metadataPDF, err = client.AbsoluteURL(
-			acmBaseURL,
-			metadataPDF,
+	if result.Status != "ok" {
+		return paper.DocumentInfo{}, fmt.Errorf(
+			"Crossref returned an unsuccessful status: %s",
+			result.Status,
 		)
-		if err != nil {
-			metadataPDF = ""
+	}
+
+	if !strings.EqualFold(result.Message.DOI, doi) {
+		return paper.DocumentInfo{}, fmt.Errorf(
+			"Crossref returned a different DOI: %s",
+			result.Message.DOI,
+		)
+	}
+
+	title := fallbackTitle(doi)
+
+	if len(result.Message.Title) > 0 {
+		candidate := strings.TrimSpace(result.Message.Title[0])
+		if candidate != "" {
+			title = candidate
 		}
 	}
+
+	landingURL := strings.TrimSpace(result.Message.URL)
+
+	if landingURL == "" {
+		landingURL = fmt.Sprintf(
+			"%s/doi/%s",
+			acmBaseURL,
+			paper.EscapeDOIPath(doi),
+		)
+	}
+
+	metadataPDF := findPDFLink(result.Message.Link)
 
 	return paper.DocumentInfo{
 		DOI:         doi,
 		Identifier:  doi,
-		LandingURL:  finalURL,
+		LandingURL:  landingURL,
 		Title:       title,
 		MetadataPDF: metadataPDF,
 	}, nil
@@ -104,25 +126,7 @@ func downloadACMPDF(
 	info paper.DocumentInfo,
 	outputDir string,
 ) (string, error) {
-	candidates := make([]string, 0, 2)
-
-	if info.MetadataPDF != "" {
-		candidates = append(
-			candidates,
-			info.MetadataPDF,
-		)
-	}
-
-	candidates = append(
-		candidates,
-		fmt.Sprintf(
-			"%s/doi/pdf/%s",
-			acmBaseURL,
-			paper.EscapeDOIPath(info.DOI),
-		),
-	)
-
-	candidates = uniqueStrings(candidates)
+	candidates := buildPDFCandidates(info)
 
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return "", fmt.Errorf(
@@ -201,6 +205,25 @@ func downloadACMPDF(
 	)
 }
 
+func findPDFLink(links []crossrefLink) string {
+	for _, link := range links {
+		contentType := strings.ToLower(
+			strings.TrimSpace(link.ContentType),
+		)
+
+		if contentType != "application/pdf" {
+			continue
+		}
+
+		target := strings.TrimSpace(link.URL)
+		if target != "" {
+			return target
+		}
+	}
+
+	return ""
+}
+
 func fallbackTitle(doi string) string {
 	suffix := strings.TrimPrefix(
 		strings.ToLower(strings.TrimSpace(doi)),
@@ -212,16 +235,6 @@ func fallbackTitle(doi string) string {
 	}
 
 	return "ACM-" + client.SafeFilename(suffix)
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-
-	return ""
 }
 
 func uniqueStrings(values []string) []string {
@@ -250,4 +263,33 @@ func uniqueStrings(values []string) []string {
 	}
 
 	return result
+}
+
+func buildPDFCandidates(info paper.DocumentInfo) []string {
+	candidates := make([]string, 0, 3)
+
+	if info.MetadataPDF != "" {
+		candidates = append(
+			candidates,
+			info.MetadataPDF,
+		)
+	}
+
+	escapedDOI := paper.EscapeDOIPath(info.DOI)
+
+	candidates = append(
+		candidates,
+		fmt.Sprintf(
+			"%s/doi/pdf/%s",
+			acmBaseURL,
+			escapedDOI,
+		),
+		fmt.Sprintf(
+			"%s/doi/pdf/%s?download=true",
+			acmBaseURL,
+			escapedDOI,
+		),
+	)
+
+	return uniqueStrings(candidates)
 }
